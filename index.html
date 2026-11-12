@@ -147,11 +147,6 @@
   @keyframes blink { from { opacity: 1; } to { opacity: 0.25; } }
 
   #hint { position: absolute; bottom: 158px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(220,240,255,0.75); text-shadow: 0 1px 3px #000; white-space: nowrap; }
-  #pause-hint {
-    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
-    background: rgba(4, 10, 18, 0.45); font-size: 22px; letter-spacing: 4px; color: #dceaf5; z-index: 40;
-    pointer-events: none;
-  }
   #mute-ind { position: absolute; top: 14px; right: 16px; font-size: 12px; color: #8fb4cc; text-shadow: 0 1px 3px #000; }
   #env-info { position: absolute; top: 32px; right: 16px; font-size: 12px; color: #a8c4d8; text-shadow: 0 1px 3px #000; letter-spacing: 1px; }
 
@@ -159,8 +154,12 @@
   .screen {
     position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
     background: radial-gradient(ellipse at 50% 30%, rgba(10, 28, 46, 0.42), rgba(4, 10, 18, 0.82));
-    overflow-y: auto;
+    overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(127, 214, 255, 0.35) rgba(6, 18, 31, 0.6);
   }
+  .screen::-webkit-scrollbar { width: 10px; }
+  .screen::-webkit-scrollbar-track { background: rgba(6, 18, 31, 0.6); }
+  .screen::-webkit-scrollbar-thumb { background: rgba(127, 214, 255, 0.3); border-radius: 5px; border: 2px solid rgba(6, 18, 31, 0.6); }
+  .screen::-webkit-scrollbar-thumb:hover { background: rgba(240, 183, 74, 0.55); }
   .screen .box { text-align: center; max-width: 660px; padding: 22px 20px; margin: auto; }
   /* ---------- 舰种选择卡片 ---------- */
   #ship-pick { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 4px auto 16px; max-width: 620px; }
@@ -245,6 +244,9 @@
     .msg { font-size: 11px; padding: 3px 8px; }
     #env-info { font-size: 10px; top: 26px; right: 10px; }
     #mute-ind { font-size: 10px; top: 8px; right: 10px; }
+    #speed-ctl { top: 8px; left: 10px; padding: 4px 6px; gap: 4px; }
+    #speed-ctl .speed-cap { display: none; }
+    #speed-ctl .speed-opt { min-width: 32px; padding: 2px 6px; font-size: 12px; }
   }
   /* ---------- ESC 暂停菜单 ---------- */
   #pause-menu {
@@ -261,6 +263,64 @@
   }
   .pm-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 24px rgba(240, 183, 74, 0.6); }
   .pm-btn.sub { background: rgba(20, 45, 70, 0.9); color: #7fd6ff; border: 1px solid rgba(127, 214, 255, 0.35); }
+
+  /* ---------- 鼠标反转开关 ---------- */
+  .mouse-opts {
+    display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap;
+    width: fit-content; margin: 4px auto 20px; padding: 11px 18px;
+    border: 1px solid var(--panel-border); border-radius: 8px; background: rgba(10, 25, 40, 0.6);
+  }
+  .mo-title { font-size: 12px; letter-spacing: 3px; color: var(--accent-cyan); opacity: 0.85; }
+  .inv-row {
+    pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 10px;
+    background: none; border: none; padding: 2px 4px; border-radius: 6px;
+    font-family: inherit; font-size: 13px; letter-spacing: 1px; color: #c8dcec; transition: color 0.15s;
+  }
+  .inv-row:hover { color: #fff; }
+  .inv-row:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 2px; }
+  .inv-switch {
+    position: relative; flex: none; width: 42px; height: 22px; border-radius: 12px;
+    background: rgba(20, 45, 70, 0.9); border: 1px solid rgba(127, 214, 255, 0.35);
+    transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+  }
+  .inv-thumb {
+    position: absolute; top: 50%; left: 3px; width: 16px; height: 16px; transform: translateY(-50%);
+    border-radius: 50%; background: #7fd6ff; box-shadow: 0 0 6px rgba(127, 214, 255, 0.5);
+    transition: left 0.18s, background 0.18s, box-shadow 0.18s;
+  }
+  .inv-row[aria-checked="true"] .inv-label { color: var(--accent); }
+  .inv-row[aria-checked="true"] .inv-switch {
+    background: linear-gradient(180deg, #ffd98a, #f0b74a); border-color: rgba(240, 183, 74, 0.9);
+    box-shadow: 0 0 12px rgba(240, 183, 74, 0.45);
+  }
+  .inv-row[aria-checked="true"] .inv-thumb { left: 23px; background: #08131f; box-shadow: 0 0 4px rgba(0, 0, 0, 0.4); }
+  #pause-menu .mouse-opts { flex-direction: column; align-items: stretch; width: 240px; margin: 20px auto 0; gap: 12px; }
+  #pause-menu .mo-title { text-align: center; }
+  #pause-menu .inv-row { justify-content: space-between; width: 100%; font-size: 14px; }
+
+  /* ---------- 游戏速度开关 ---------- */
+  .speed-cap { font-size: 12px; letter-spacing: 2px; color: var(--accent-cyan); opacity: 0.9; }
+  .speed-seg { display: inline-flex; gap: 3px; padding: 3px; border-radius: 7px; background: rgba(20, 45, 70, 0.7); border: 1px solid var(--panel-border); }
+  .speed-opt {
+    pointer-events: auto; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 700;
+    min-width: 40px; padding: 4px 9px; border-radius: 5px; border: 1px solid transparent;
+    background: transparent; color: #8fb4cc; transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+  }
+  .speed-opt:hover { color: #fff; background: rgba(127, 214, 255, 0.14); }
+  .speed-opt:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 1px; }
+  .speed-opt.on {
+    color: #08131f; background: linear-gradient(180deg, #ffd98a, #f0b74a);
+    border-color: rgba(240, 183, 74, 0.9); box-shadow: 0 0 10px rgba(240, 183, 74, 0.4);
+  }
+  .speed-block {
+    display: flex; align-items: center; justify-content: center; gap: 14px; width: fit-content;
+    margin: 0 auto 20px; padding: 10px 16px; border: 1px solid var(--panel-border);
+    border-radius: 8px; background: rgba(10, 25, 40, 0.6);
+  }
+  #pause-menu .speed-block { width: 240px; justify-content: space-between; margin: 14px auto 0; }
+  /* HUD 左上角速度控制（战斗中常驻可见） */
+  #speed-ctl { position: absolute; top: 12px; left: 16px; display: flex; align-items: center; gap: 6px; padding: 5px 8px; pointer-events: auto; }
+  #speed-ctl .speed-opt { min-width: 36px; padding: 3px 8px; }
 
   #screen-end { display: none; }
   #end-title { font-size: 48px; font-weight: 800; letter-spacing: 12px; }
@@ -292,6 +352,11 @@
   <div id="oor-badge">目标超出射程</div>
 
   <!-- 顶部 -->
+  <div id="speed-ctl" class="panel" title="游戏速度（默认 1×，可切换 6× 快进）">
+    <span class="speed-cap">速度</span>
+    <button class="speed-opt" data-speed="1" aria-pressed="true">1×</button>
+    <button class="speed-opt" data-speed="6" aria-pressed="false">6×</button>
+  </div>
   <div id="top-center">
     <div id="timer">08:00</div>
     <div id="score">敌方舰队 0 / 4</div>
@@ -341,12 +406,10 @@
     <div id="minimap-cap">战术海图</div>
   </div>
 
-  <div id="hint">左键齐射 · 滚轮瞄准镜 · 右键按住自由视角 · T 鱼雷</div>
+  <div id="hint">左键齐射 · 滚轮瞄准镜 · 右键按住自由视角 · 3 鱼雷 · T 速度</div>
   <div id="labels"></div>
   <div id="dmg-container"></div>
 </div>
-
-<div id="pause-hint">点击画面继续战斗</div>
 
 <!-- ESC 暂停菜单 -->
 <div id="pause-menu">
@@ -355,6 +418,24 @@
     <button class="pm-btn" id="btn-resume">继续战斗</button>
     <button class="pm-btn" id="btn-restart2">重启游戏</button>
     <button class="pm-btn sub" id="btn-menu">返回主菜单</button>
+    <div class="mouse-opts">
+      <span class="mo-title">鼠标瞄准</span>
+      <button class="inv-row" data-axis="y" role="switch" aria-checked="false">
+        <span class="inv-label">反转上下</span>
+        <span class="inv-switch"><span class="inv-thumb"></span></span>
+      </button>
+      <button class="inv-row" data-axis="x" role="switch" aria-checked="false">
+        <span class="inv-label">反转左右</span>
+        <span class="inv-switch"><span class="inv-thumb"></span></span>
+      </button>
+    </div>
+    <div class="speed-block">
+      <span class="speed-cap">战斗速度</span>
+      <span class="speed-seg">
+        <button class="speed-opt" data-speed="1" aria-pressed="true">1×</button>
+        <button class="speed-opt" data-speed="6" aria-pressed="false">6×</button>
+      </span>
+    </div>
   </div>
 </div>
 
@@ -382,6 +463,24 @@
         <button class="cfg-btn" id="btn-red-plus">＋</button>
       </div>
     </div>
+    <div class="mouse-opts">
+      <span class="mo-title">鼠标瞄准</span>
+      <button class="inv-row" data-axis="y" role="switch" aria-checked="false">
+        <span class="inv-label">反转上下</span>
+        <span class="inv-switch"><span class="inv-thumb"></span></span>
+      </button>
+      <button class="inv-row" data-axis="x" role="switch" aria-checked="false">
+        <span class="inv-label">反转左右</span>
+        <span class="inv-switch"><span class="inv-thumb"></span></span>
+      </button>
+    </div>
+    <div class="speed-block">
+      <span class="speed-cap">战斗速度</span>
+      <span class="speed-seg">
+        <button class="speed-opt" data-speed="1" aria-pressed="true">1×</button>
+        <button class="speed-opt" data-speed="6" aria-pressed="false">6×</button>
+      </span>
+    </div>
     <div class="controls-grid">
       <div><b>W / S</b>加速 / 减速（船只惯性大）</div>
       <div><b>A / D</b>左 / 右满舵</div>
@@ -389,14 +488,15 @@
       <div><b>左键 / 空格</b>主炮齐射</div>
       <div><b>滚轮</b>切换瞄准镜倍率</div>
       <div><b>右键按住</b>自由视角（炮口锁定）</div>
-      <div><b>T / 3</b>鱼雷瞄准模式（手动扇形）</div>
+      <div><b>3</b>鱼雷瞄准模式（手动扇形）</div>
+      <div><b>T</b>切换游戏速度（1× / 6×）</div>
       <div><b>1 / 2</b>切换 HE 高爆 / AP 穿甲弹</div>
       <div><b>R</b>维修小组（回血，3 次）</div>
       <div><b>Shift</b>狙击镜（按住）</div>
       <div><b>X</b>锁定 / 解锁目标（视角跟随）</div>
       <div><b>F</b>烟雾发生器（驱逐/巡洋）</div>
-      <div><b>M / ESC</b>静音 / 释放鼠标</div>
-      <div><b>滚轮(T模式)</b>调整鱼雷散布角</div>
+      <div><b>M / ESC</b>静音 / 暂停菜单（内含鼠标反转开关）</div>
+      <div><b>滚轮(鱼雷模式)</b>调整鱼雷散布角</div>
       <div><b>鼠标上下</b>调瞄准距离（准星=弹着点）</div>
     </div>
     <button class="btn" id="btn-start">起 锚 出 击</button>

@@ -17,6 +17,10 @@ const G = {
   shiftZoom: false,
   wantFire: false, muted: false,
   paused: false,          // ESC 暂停菜单
+  plBroken: false,        // Pointer Lock 不可用 → 无锁定模式（光标准星）
+  invertX: false,         // 反转左右（鼠标横向）
+  invertY: false,         // 反转上下（鼠标纵向）
+  speed: 1,               // 游戏速度倍率（1 / 6）
   smokes: [],             // 烟幕区列表
 };
 
@@ -814,11 +818,12 @@ window.addEventListener("keydown", e => {
     AudioSys.setMuted(G.muted);
     $("mute-ind").textContent = G.muted ? "已静音 (M)" : "M 静音";
   }
+  if (e.code === "KeyT") { setSpeed(G.speed === 6 ? 1 : 6); return; }   // T：切换游戏速度 1× / 6×
   if (G.state !== "playing" || !G.player || !G.player.alive) return;
   if (e.code === "KeyW") G.player.setThrottle(1);
   if (e.code === "KeyS") G.player.setThrottle(-1);
   if (e.code === "Space") { G.wantFire = true; e.preventDefault(); }
-  if (e.code === "KeyT" || e.code === "Digit3") {
+  if (e.code === "Digit3") {
     if (G.player.cfg.torp && G.player.alive) {
       G.torpMode = !G.torpMode;
       addMsg(G.torpMode ? "鱼雷瞄准模式：移动鼠标转向 · 滚轮调扇形 · 左键发射"
@@ -885,11 +890,9 @@ function updateRudderInput() {
 }
 
 renderer.domElement.addEventListener("mousedown", e => {
-  if (G.state !== "playing") return;
+  if (G.state !== "playing" || G.paused) return;
   // Pointer Lock 可用则尝试锁定；不可用（嵌入式浏览器）也不阻塞开火 —— 无锁定模式照常游玩
-  if (document.pointerLockElement !== renderer.domElement) {
-    try { renderer.domElement.requestPointerLock(); } catch (err) { /* 环境不支持 */ }
-  }
+  if (!G.plBroken && document.pointerLockElement !== renderer.domElement) tryLock();
   if (e.button === 0) {
     // 鱼雷模式下左键 = 发射鱼雷（WoWS）；否则主炮开火
     if (G.torpMode) tryPlayerTorpedo();
@@ -908,16 +911,18 @@ document.addEventListener("mousemove", e => {
   if (document.pointerLockElement === renderer.domElement) {
     // Pointer Lock 模式（全屏/支持的浏览器）：相对位移控制
     const sens = 0.0021 * (G.fovCur / 55);
-    if (!G.lockedTarget) G.camYaw -= e.movementX * sens;
-    G.camPitch = THREE.MathUtils.clamp(G.camPitch + e.movementY * sens, -0.35, 1.1);
-    const dy = -e.movementY;
+    const ix = G.invertX ? -1 : 1, iy = G.invertY ? -1 : 1;
+    if (!G.lockedTarget) G.camYaw -= e.movementX * sens * ix;
+    G.camPitch = THREE.MathUtils.clamp(G.camPitch + e.movementY * sens * iy, -0.35, 1.1);
+    const dy = -e.movementY * iy;
     if (dy !== 0) {
       G.aimDistTarget = THREE.MathUtils.clamp(G.aimDistTarget * Math.exp(dy * 0.0028), 250, 16000);
     }
   } else {
     // 无锁定模式（嵌入式浏览器 fallback）：光标即准星，位置驱动瞄准
-    G.mouseX = e.clientX;
-    G.mouseY = e.clientY;
+    // 反转开关在此处翻转坐标：瞄准射线 / 边缘转向 / 准星 / 瞄准辅助随之同步反向，保持一致
+    G.mouseX = G.invertX ? window.innerWidth - e.clientX : e.clientX;
+    G.mouseY = G.invertY ? window.innerHeight - e.clientY : e.clientY;
   }
 });
 window.addEventListener("wheel", e => {
@@ -931,7 +936,63 @@ window.addEventListener("wheel", e => {
   G.zoomIdx = THREE.MathUtils.clamp(G.zoomIdx + (e.deltaY > 0 ? -1 : 1), 0, levels.length - 1);
   if (!G.shiftZoom) G.fovTarget = levels[G.zoomIdx];
 });
+/* ---------- 鼠标反转设置（开始界面 / 暂停菜单共用，本地持久化） ---------- */
+const MOUSE_KEY = "naval-thunder.mouse";
+try {
+  const s = JSON.parse(localStorage.getItem(MOUSE_KEY) || "{}");
+  G.invertX = !!s.x; G.invertY = !!s.y;
+} catch (err) { /* 隐私模式等不可读写时忽略 */ }
+function persistMouse() {
+  try { localStorage.setItem(MOUSE_KEY, JSON.stringify({ x: G.invertX, y: G.invertY })); } catch (err) { /* 忽略 */ }
+}
+function syncInvertUI() {
+  document.querySelectorAll(".inv-row").forEach(b => {
+    b.setAttribute("aria-checked", String(b.dataset.axis === "x" ? G.invertX : G.invertY));
+  });
+}
+document.addEventListener("click", e => {
+  const row = e.target.closest(".inv-row");
+  if (!row) return;
+  if (row.dataset.axis === "x") G.invertX = !G.invertX; else G.invertY = !G.invertY;
+  persistMouse();
+  syncInvertUI();
+  AudioSys.uiClick();
+});
+syncInvertUI();
+/* ---------- 游戏速度（HUD / 暂停菜单 / 开始界面共用，本地持久化） ---------- */
+const SPEED_KEY = "naval-thunder.speed";
+try {
+  const sv = parseInt(localStorage.getItem(SPEED_KEY), 10);
+  G.speed = sv === 6 ? 6 : 1;
+} catch (err) { /* 忽略 */ }
+function syncSpeedUI() {
+  document.querySelectorAll(".speed-opt").forEach(b => {
+    const on = parseInt(b.dataset.speed, 10) === G.speed;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+}
+function setSpeed(s) {
+  G.speed = s === 6 ? 6 : 1;
+  try { localStorage.setItem(SPEED_KEY, String(G.speed)); } catch (err) { /* 忽略 */ }
+  syncSpeedUI();
+  AudioSys.uiClick();
+  if (G.state === "playing") addMsg(G.speed === 6 ? "战斗速度 ×6（快进）" : "战斗速度 ×1", "");
+}
+document.addEventListener("click", e => {
+  const opt = e.target.closest(".speed-opt");
+  if (!opt) return;
+  setSpeed(parseInt(opt.dataset.speed, 10));
+});
+syncSpeedUI();
 /* ---------- ESC 暂停菜单 ---------- */
+function tryLock() {
+  // 请求指针锁定；失败（环境不支持 / ESC 后冷却期）由 pointerlockerror 降级为无锁定模式
+  try {
+    const p = renderer.domElement.requestPointerLock();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch (err) { /* 环境不支持 */ }
+}
 function openPauseMenu() {
   if (G.state !== "playing" || G.paused) return;
   G.paused = true;
@@ -945,21 +1006,24 @@ function resumeGame() {
   if (!G.paused) return;
   G.paused = false;
   $("pause-menu").style.display = "none";
-  try { renderer.domElement.requestPointerLock(); } catch (err) { /* 无锁定模式无需锁定 */ }
+  tryLock();
 }
 function togglePauseMenu() {
   if (G.paused) resumeGame(); else openPauseMenu();
 }
 document.addEventListener("pointerlockchange", () => {
-  const unlocked = document.pointerLockElement !== renderer.domElement;
-  // ESC 释放指针锁 → 弹出暂停菜单；重新锁定 → 收起菜单
-  if (unlocked && G.state === "playing" && !G.plBroken && !G.paused) openPauseMenu();
-  if (!unlocked) $("pause-menu").style.display = "none";
+  const locked = document.pointerLockElement === renderer.domElement;
+  if (locked) {
+    // 重新锁定 → 同步恢复战斗（避免菜单已隐藏但 G.paused 仍冻结画面）
+    if (G.paused) { G.paused = false; $("pause-menu").style.display = "none"; }
+  } else if (G.state === "playing" && !G.paused) {
+    // ESC 释放指针锁 → 弹出暂停菜单（此事件仅在真实锁定状态变化时触发）
+    openPauseMenu();
+  }
 });
 document.addEventListener("pointerlockerror", () => {
-  // 嵌入式浏览器不支持 Pointer Lock → 启用无锁定模式（光标准星）
+  // 嵌入式浏览器不支持 Pointer Lock，或 ESC 后过快重锁被拒 → 启用无锁定模式（光标准星）
   G.plBroken = true;
-  $("pause-hint").style.display = "none";
 });
 $("btn-resume").addEventListener("click", () => {
   AudioSys.uiClick();
@@ -1043,6 +1107,7 @@ function updateAim(dt) {
     aimPoint.y = 0;
     // 边缘转向：光标靠近屏幕边缘时持续旋转视角（策略游戏标准方案）
     if (!G.lockedTarget && !G.freeLook) {
+      // nx/ny 已含反转（见 mousemove 捕获处），此处不再重复乘反转系数
       const ex = Math.max(0, Math.abs(nx) - 0.22) / 0.78 * Math.sign(nx);
       const ey = Math.max(0, Math.abs(ny) - 0.18) / 0.82 * Math.sign(-ny);
       G.camYaw -= ex * ex * Math.sign(ex) * 2.1 * dtAim * (G.fovCur / 55);
@@ -1498,8 +1563,8 @@ function updateHUD(dt) {
       : "视野内无敌舰";
     // 底部操作提示（鱼雷模式下切换为鱼雷提示）
     $("hint").textContent = G.torpMode
-      ? `鱼雷瞄准 · 散布 ${G.torpSpread}° · 左键发射 · 滚轮调散布 · T/3 退出`
-      : "左键齐射 · 滚轮瞄准镜 · 右键按住自由视角 · T/3 鱼雷 · Shift 狙击";
+      ? `鱼雷瞄准 · 散布 ${G.torpSpread}° · 左键发射 · 滚轮调散布 · 3 退出`
+      : "左键齐射 · 滚轮瞄准镜 · 右键按住自由视角 · 3 鱼雷 · T 速度 · Shift 狙击";
   }
   updateDmgNums(dt);
 }
@@ -1527,7 +1592,8 @@ function startGame() {
   el.screenStart.style.display = "none";
   el.screenEnd.style.display = "none";
   el.hud.style.display = "block";
-  if (!G.plBroken) $("pause-hint").style.display = "flex";
+  // 开始按钮点击即有效用户手势 → 直接请求指针锁定，进入战斗无需再点击画面
+  if (!G.plBroken) tryLock();
   addMsg("战斗开始！全舰队突击！", "good");
 }
 $("btn-start").addEventListener("click", startGame);
@@ -1538,7 +1604,6 @@ function endGame(win, reason) {
   G.state = "over";
   G.wantFire = false;
   document.exitPointerLock && document.exitPointerLock();
-  $("pause-hint").style.display = "none";
   const acc = G.stats.shots > 0 ? (G.stats.hits / G.stats.shots * 100).toFixed(0) : 0;
   el.endTitle.textContent = win ? "胜 利" : "战 败";
   el.endTitle.className = win ? "win" : "lose";
@@ -1607,67 +1672,87 @@ buildIslands();
 spawnFleet();          // 菜单背景展示舰队
 const clock = new THREE.Clock();
 
+function stepSim(dt) {
+  G.time += dt;
+  oceanMat.uniforms.uTime.value = G.time;
+  updateEnvironment(dt);
+
+  if (G.state === "playing") {
+    G.timeLeft -= dt;
+    if (G.timeLeft <= 0) endGame(false, "战斗超时，弹药耗尽");
+
+    updateRudderInput();
+    if (G.wantFire && G.player.alive) tryPlayerFire();   // 按住即自动齐射
+
+    // 隐蔽/点亮 → 舰船 & AI
+    updateDetection(dt);
+    G.ships.forEach(s => s.update(dt, G.time));
+    G.ais.forEach(ai => ai.update(dt));
+
+    // 炮弹 / 鱼雷
+    for (let i = G.shells.length - 1; i >= 0; i--) {
+      const sh = G.shells[i];
+      sh.update(dt);
+      if (!sh.alive) G.shells.splice(i, 1);
+    }
+    for (let i = G.torps.length - 1; i >= 0; i--) {
+      const tp = G.torps[i];
+      tp.update(dt);
+      if (!tp.alive) G.torps.splice(i, 1);
+    }
+
+    // 移除沉底舰船
+    for (let i = G.ships.length - 1; i >= 0; i--) {
+      if (G.ships[i].remove) {
+        scene.remove(G.ships[i].model.root);
+        if (G.ships[i]._label) G.ships[i]._label.remove();
+        G.ships.splice(i, 1);
+      }
+    }
+
+    // 烟幕区：寿命衰减 + 烟团粒子
+    for (const sm of G.smokes) {
+      sm.life -= dt;
+      if (Math.random() < 0.55) FX.smokeCloud(sm.x, sm.z, sm.r);
+    }
+    G.smokes = G.smokes.filter(sm => sm.life > 0);
+
+    resolveCollisions(dt);
+    updateAim(dt);
+    updateTorpWarning(dt);
+    AudioSys.engineSet(G.player.speedFactor(), G.player.alive);
+    updateHUD(dt);
+  } else {
+    // 菜单 / 结束画面：舰队待机缓慢巡航展示
+    G.ships.forEach(s => s.update(dt, G.time));
+  }
+
+  FX.update(dt);
+  if (G.player) updateCamera(dt);
+}
+
+function advanceSim(realDt) {
+  // 游戏速度：把 realDt×speed 的仿真时间拆成 ≤0.05s 的固定步长逐步推进，
+  // 6× 快进时每帧最多 6 步，物理/弹道/碰撞与 1× 完全一致，不会因大 dt 穿透或失稳
+  const speed = G.state === "playing" ? G.speed : 1;
+  let simTime = realDt * speed;
+  const maxSteps = Math.ceil(speed) + 2;
+  let steps = 0;
+  while (simTime > 1e-6 && steps < maxSteps) {
+    const dt = Math.min(simTime, 0.05);
+    stepSim(dt);
+    simTime -= dt;
+    steps++;
+    if (G.state !== "playing" || G.paused) break;   // 仿真中结束/暂停 → 停止后续快进步
+  }
+}
+
 function tick() {
   requestAnimationFrame(tick);
   try {
-    const dt = Math.min(clock.getDelta(), 0.05);
+    const realDt = Math.min(clock.getDelta(), 0.05);
     if (G.paused) { renderer.render(scene, camera); return; }   // ESC 暂停：画面冻结
-    G.time += dt;
-    oceanMat.uniforms.uTime.value = G.time;
-    updateEnvironment(dt);
-
-    if (G.state === "playing") {
-      G.timeLeft -= dt;
-      if (G.timeLeft <= 0) endGame(false, "战斗超时，弹药耗尽");
-
-      updateRudderInput();
-      if (G.wantFire && G.player.alive) tryPlayerFire();   // 按住即自动齐射
-
-      // 隐蔽/点亮 → 舰船 & AI
-      updateDetection(dt);
-      G.ships.forEach(s => s.update(dt, G.time));
-      G.ais.forEach(ai => ai.update(dt));
-
-      // 炮弹 / 鱼雷
-      for (let i = G.shells.length - 1; i >= 0; i--) {
-        const sh = G.shells[i];
-        sh.update(dt);
-        if (!sh.alive) G.shells.splice(i, 1);
-      }
-      for (let i = G.torps.length - 1; i >= 0; i--) {
-        const tp = G.torps[i];
-        tp.update(dt);
-        if (!tp.alive) G.torps.splice(i, 1);
-      }
-
-      // 移除沉底舰船
-      for (let i = G.ships.length - 1; i >= 0; i--) {
-        if (G.ships[i].remove) {
-          scene.remove(G.ships[i].model.root);
-          if (G.ships[i]._label) G.ships[i]._label.remove();
-          G.ships.splice(i, 1);
-        }
-      }
-
-      // 烟幕区：寿命衰减 + 烟团粒子
-      for (const sm of G.smokes) {
-        sm.life -= dt;
-        if (Math.random() < 0.55) FX.smokeCloud(sm.x, sm.z, sm.r);
-      }
-      G.smokes = G.smokes.filter(sm => sm.life > 0);
-
-      resolveCollisions(dt);
-      updateAim(dt);
-      updateTorpWarning(dt);
-      AudioSys.engineSet(G.player.speedFactor(), G.player.alive);
-      updateHUD(dt);
-    } else {
-      // 菜单 / 结束画面：舰队待机缓慢巡航展示
-      G.ships.forEach(s => s.update(dt, G.time));
-    }
-
-    FX.update(dt);
-    if (G.player) updateCamera(dt);
+    advanceSim(realDt);
     renderer.render(scene, camera);
   } catch (e) {
     // 单帧异常不终止循环（并上报便于诊断）
